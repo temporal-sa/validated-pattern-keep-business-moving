@@ -6,7 +6,7 @@ module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
   parserOptions: {
-    project: './tsconfig.json',
+    project: ['./tsconfig.json', './tsconfig.test.json'],
     tsconfigRootDir: __dirname,
   },
   plugins: ['@typescript-eslint', 'deprecation'],
@@ -20,6 +20,9 @@ module.exports = {
     // recommended for safety
     '@typescript-eslint/no-floating-promises': 'error', // forgetting to await Activities and Workflow APIs is bad
     'deprecation/deprecation': 'warn',
+
+    // The recoverableStep wrapper uses `while (true)` to retry until success.
+    'no-constant-condition': ['error', { checkLoops: false }],
 
     // code style preference
     'object-shorthand': ['error', 'always'],

@@ -1,7 +1,8 @@
 node_modules
 lib
 lib-test
-tsconfig.tsbuildinfo
-test-results
 playwright-report
+test-results
 playwright/.cache
+.eslintrc.js
+jest.config.js
