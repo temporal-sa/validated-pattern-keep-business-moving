@@ -131,6 +131,23 @@ temporal operator search-attribute create --name FailedActivity --type Keyword
 
 ## Running
 
+One command to start the Temporal dev server, worker, and UI together:
+
+```bash
+npm run dev
+# Open http://localhost:3000
+```
+
+`npm run dev` boots `temporal server start-dev` with the search attributes pre-provisioned and runs the worker + web service in parallel. If a Temporal server is already listening on `localhost:7233`, it skips starting a new one and registers the search attributes via `temporal operator search-attribute create` instead.
+
+To start the 11 sample workflows in another terminal:
+
+```bash
+npm run workflow
+```
+
+Or run each piece separately:
+
 ```bash
 # Terminal 1: Start the worker
 npm start
@@ -140,7 +157,6 @@ npm run workflow
 
 # Terminal 3: Start the UI
 npm run web
-# Open http://localhost:3000
 ```
 
 ## Fixing a Failed Workflow
