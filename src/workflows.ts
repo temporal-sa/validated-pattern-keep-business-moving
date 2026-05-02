@@ -180,7 +180,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
 
   // Run a forward step and register its compensation BEFORE execution (saga best practice).
   // Registering before handles partial side effects if the activity fails mid-flight.
-  const runForward = async <T>(
+  const runCompensatableStep = async <T>(
     activityName: string,
     forward: () => Promise<T>,
     compensation?: { name: string; fn: () => Promise<string> }
@@ -199,7 +199,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
   };
 
   try {
-    await runForward(
+    await runCompensatableStep(
       'verifyIncome',
       () => verifyIncome(app.applicantName, app.employerName, app.annualIncome), // Forward
       // Compensation: none. No external state to undo, so no entry is pushed to the saga stack.
@@ -207,7 +207,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     completedActivities.push('verifyIncome');
     updateStatus('INCOME_VERIFIED');
 
-    await runForward(
+    await runCompensatableStep(
       'runCreditCheck',
       () => runCreditCheck(app.applicantName, app.ssn), // Forward
       { name: 'withdrawCreditInquiry', fn: () => withdrawCreditInquiry(app.applicationId, app.ssn) } // Compensation
@@ -215,7 +215,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     completedActivities.push('runCreditCheck');
     updateStatus('CREDIT_CHECKED');
 
-    await runForward(
+    await runCompensatableStep(
       'orderAppraisal',
       () => orderAppraisal(app.propertyAddress, app.loanAmount), // Forward
       { name: 'cancelAppraisal', fn: () => cancelAppraisal(app.applicationId, app.propertyAddress) } // Compensation
@@ -223,7 +223,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     completedActivities.push('orderAppraisal');
     updateStatus('APPRAISAL_ORDERED');
 
-    await runForward(
+    await runCompensatableStep(
       'performTitleSearch',
       () => performTitleSearch(app.propertyId, app.propertyAddress), // Forward
       { name: 'releaseTitleHold', fn: () => releaseTitleHold(app.applicationId, app.propertyId) } // Compensation
@@ -231,7 +231,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     completedActivities.push('performTitleSearch');
     updateStatus('TITLE_SEARCHED');
 
-    await runForward(
+    await runCompensatableStep(
       'underwrite',
       () => underwrite(app.applicantName, app.ssn, app.annualIncome, app.loanAmount, app.downPayment), // Forward
       {
@@ -242,7 +242,7 @@ export async function homeLoanWorkflow(application: LoanApplication): Promise<Lo
     completedActivities.push('underwrite');
     updateStatus('UNDERWRITTEN');
 
-    await runForward(
+    await runCompensatableStep(
       'closeLoan',
       () => closeLoan(app.applicationId, app.applicantName, app.loanAmount), // Forward
       { name: 'reverseLoanClosure', fn: () => reverseLoanClosure(app.applicationId, app.loanAmount) } // Compensation

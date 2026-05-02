@@ -1,5 +1,7 @@
 # Keep Business Moving — Home Loan Processing
 
+![Keep Business Moving — list view](assets/keep-business-moving-list-view.png)
+
 Demonstrates two complementary patterns:
 
 1. **Recoverable activity pattern** — failed activities pause the workflow and wait for a human to fix the data via a Temporal Signal before retrying.
@@ -31,6 +33,18 @@ When an activity fails:
 
 Each step that produces an external side effect registers a compensation **before** it executes. Registrations go onto a LIFO stack via `unshift()`. When the forward pipeline aborts — either a `RollbackRequired` failure from an activity or a `cancelApplication` signal — the catch block unwinds the stack, running each compensation through the same `recoverableStep` wrapper. A compensation that fails (e.g. vendor outage) enters `ROLLBACK_PENDING_FIX`, awaiting either a data patch or a plain retry signal.
 
+Forward steps go through a `runCompensatableStep` helper that bundles three responsibilities: short-circuit if a cancel has already arrived, register the step's compensation onto the LIFO stack, and dispatch the forward call through `recoverableStep`:
+
+```typescript
+await runCompensatableStep(
+  'runCreditCheck',
+  () => runCreditCheck(app.applicantName, app.ssn),                                    // forward
+  { name: 'withdrawCreditInquiry', fn: () => withdrawCreditInquiry(app.applicationId, app.ssn) }, // compensation
+);
+```
+
+Compensations are registered **before** the forward call to handle partial failures. Consider `orderAppraisal`: the worker POSTs a booking to the appraisal vendor, the vendor records the booking and reserves the fee, then the response is lost to a network blip on the way back. The activity throws because it never received a response — yet the booking exists on the vendor side. If the workflow only registered the compensation after a successful forward call, that booking would be orphaned by a saga rollback. Pre-registering guarantees `cancelAppraisal` runs during rollback either way; idempotency makes it a safe no-op when the side effect never actually landed.
+
 Which steps compensate:
 
 | Step | Side effect | Compensation |
@@ -55,36 +69,6 @@ Verify Income → Credit Check → Appraisal → Title Search → Underwriting �
 ```
 
 Each activity validates its inputs and throws `ApplicationFailure.nonRetryable()` on bad data, triggering the recovery loop.
-
-## Failure Scenarios
-
-The client starts 11 workflows covering both recovery and saga cases:
-
-### Single-issue (recovery)
-
-| Workflow | Applicant | Fails At | Root Cause |
-|----------|-----------|----------|------------|
-| LOAN-001 | Alice Johnson | *(none)* | Clean run — all steps pass |
-| LOAN-002 | Bob Smith | `runCreditCheck` | Invalid SSN `000-00-0000` |
-| LOAN-003 | Carol Davis | `orderAppraisal` | Property address is `INVALID_ADDRESS` |
-| LOAN-004 | Dan Miller | `performTitleSearch` | Property ID is `MISSING` |
-| LOAN-005 | Eve Wilson | `underwrite` | DTI ratio 1089% exceeds 400% limit |
-| LOAN-006 | Frank Brown | `verifyIncome` | Employer `UNKNOWN_EMPLOYER` not in database |
-
-### Multi-issue (require multiple rounds of Patch and Retry)
-
-| Workflow | Applicant | Fails At (in sequence) |
-|----------|-----------|------------------------|
-| LOAN-007 | Grace Lee | `verifyIncome` → `orderAppraisal` → `performTitleSearch` |
-| LOAN-008 | Henry Park | `runCreditCheck` → `underwrite` |
-| LOAN-009 | Irene Tanaka | `verifyIncome` → `runCreditCheck` → `orderAppraisal` → `underwrite` |
-
-### Saga (compensation-based rollback)
-
-| Workflow | Applicant | Trigger | Behavior |
-|----------|-----------|---------|----------|
-| LOAN-010 | Judy Reed | OFAC hit (SSN starts `999`) at `underwrite` | Auto-rolls back credit/appraisal/title compensations in LIFO order |
-| LOAN-011 | Kevin Liu | OFAC hit + `APPRAISER_OFFLINE` in address | Rollback reaches `cancelAppraisal`, fails, enters `ROLLBACK_PENDING_FIX` — patch `propertyAddress` to finish the unwind |
 
 You can also cancel any running workflow from the UI's **Cancel Application** button to trigger the same saga unwind with a custom reason.
 
