@@ -36,9 +36,28 @@ Each step that produces an external side effect registers a compensation **befor
 Forward steps go through a `runCompensatableStep` helper that bundles three responsibilities: short-circuit if a cancel has already arrived, register the step's compensation onto the LIFO stack, and dispatch the forward call through `recoverableStep`:
 
 ```typescript
+const runCompensatableStep = async <T>(
+  activityName: string,
+  forward: () => Promise<T>,
+  compensation?: { name: string; fn: () => Promise<string> },
+): Promise<T> => {
+  if (compensation) {
+    compensations.unshift({
+      forwardActivity: activityName,
+      compensationActivity: compensation.name,
+      run: compensation.fn,
+    });
+  }
+  return recoverableStep(activityName, forward, 'forward');
+};
+```
+
+Each forward activity is wrapped with this helper, paired with its compensation:
+
+```typescript
 await runCompensatableStep(
   'runCreditCheck',
-  () => runCreditCheck(app.applicantName, app.ssn),                                    // forward
+  () => runCreditCheck(app.applicantName, app.ssn), // forward
   { name: 'withdrawCreditInquiry', fn: () => withdrawCreditInquiry(app.applicationId, app.ssn) }, // compensation
 );
 ```
